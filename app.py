@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 import os
 from models import db, User, Category, Product, Supplier, Customer, Purchase, PurchaseItem, Sale, SaleItem, Inventory, InventoryTransaction, Setting
 from forms import LoginForm, RegisterForm, CategoryForm, ProductForm, SupplierForm, CustomerForm, PasswordResetRequestForm, PasswordResetForm
+from utils import generate_barcode_file, generate_barcode_base64, generate_random_barcode
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
@@ -199,12 +200,38 @@ def delete_category(id):
     flash('تم حذف التصنيف بنجاح', 'success')
     return redirect(url_for('categories'))
 
+# Serve static files
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
+
 # Products routes
 @app.route('/products')
 @login_required
 def products():
     products = Product.query.all()
     return render_template('products/index.html', products=products)
+
+@app.route('/products/barcode/<int:id>')
+@login_required
+def product_barcode(id):
+    product = Product.query.get_or_404(id)
+
+    # If product doesn't have a barcode, generate one
+    if not product.barcode:
+        product.barcode = generate_random_barcode()
+        db.session.commit()
+
+    # Generate barcode image
+    barcode_path = generate_barcode_file(product.barcode, f"{product.id}_{product.barcode}")
+
+    # Get barcode as base64 for display
+    barcode_base64 = generate_barcode_base64(product.barcode)
+
+    return render_template('products/barcode.html',
+                          product=product,
+                          barcode_path=barcode_path,
+                          barcode_base64=barcode_base64)
 
 @app.route('/products/add', methods=['GET', 'POST'])
 @login_required
