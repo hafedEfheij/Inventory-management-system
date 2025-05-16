@@ -124,6 +124,13 @@ class UserForm(FlaskForm):
     password = PasswordField('كلمة المرور', validators=[Optional(), Length(min=8), password_check])
     confirm_password = PasswordField('تأكيد كلمة المرور', validators=[EqualTo('password')])
 
+class PasswordResetRequestForm(FlaskForm):
+    email = StringField('البريد الإلكتروني', validators=[DataRequired(), Email()])
+
+class PasswordResetForm(FlaskForm):
+    password = PasswordField('كلمة المرور الجديدة', validators=[DataRequired(), Length(min=8), password_check])
+    confirm_password = PasswordField('تأكيد كلمة المرور', validators=[DataRequired(), EqualTo('password')])
+
 class SettingsForm(FlaskForm):
     company_name = StringField('اسم الشركة', validators=[DataRequired()])
     company_address = TextAreaField('عنوان الشركة', validators=[Optional()])
