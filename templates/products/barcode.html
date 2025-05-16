@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}باركود المنتج - {{ product.name }}{% endblock %}
+
+{% block header %}باركود المنتج - {{ product.name }}{% endblock %}
+
+{% block header_buttons %}
+<a href="{{ url_for('products') }}" class="btn btn-secondary">
+    <i class="fas fa-arrow-right"></i> العودة للمنتجات
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5>معلومات المنتج</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <th>اسم المنتج:</th>
+                                <td>{{ product.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>الرمز:</th>
+                                <td>{{ product.sku or 'غير محدد' }}</td>
+                            </tr>
+                            <tr>
+                                <th>الباركود:</th>
+                                <td>{{ product.barcode }}</td>
+                            </tr>
+                            <tr>
+                                <th>سعر البيع:</th>
+                                <td>{{ product.sale_price }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6 text-center">
+                        <h5>صورة الباركود</h5>
+                        {% if barcode_base64 %}
+                            <img src="data:image/png;base64,{{ barcode_base64 }}" class="img-fluid" alt="Barcode">
+                        {% else %}
+                            <div class="alert alert-warning">
+                                لا يمكن إنشاء صورة الباركود
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('serve_static', filename='barcodes/' + product.id|string + '_' + product.barcode + '.png') }}" 
+                               class="btn btn-primary" download>
+                                <i class="fas fa-download"></i> تحميل صورة الباركود
+                            </a>
+                            <button class="btn btn-success" onclick="window.print()">
+                                <i class="fas fa-print"></i> طباعة الباركود
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media print {
+        .header, .sidebar, .footer, .header-buttons, .btn {
+            display: none !important;
+        }
+        .content-wrapper {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .card {
+            border: none !important;
+            box-shadow: none !important;
+        }
+    }
+</style>
+{% endblock %}
