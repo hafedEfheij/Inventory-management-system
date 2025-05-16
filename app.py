@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 import os
 from models import db, User, Category, Product, Supplier, Customer, Purchase, PurchaseItem, Sale, SaleItem, Inventory, InventoryTransaction, Setting
-from forms import LoginForm, RegisterForm, CategoryForm, ProductForm, SupplierForm, CustomerForm
+from forms import LoginForm, RegisterForm, CategoryForm, ProductForm, SupplierForm, CustomerForm, PasswordResetRequestForm, PasswordResetForm
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
@@ -46,22 +46,22 @@ def index():
     total_products = Product.query.count()
     total_suppliers = Supplier.query.count()
     total_customers = Customer.query.count()
-    
+
     # Recent sales
     recent_sales = Sale.query.order_by(Sale.created_at.desc()).limit(5).all()
-    
+
     # Recent purchases
     recent_purchases = Purchase.query.order_by(Purchase.created_at.desc()).limit(5).all()
-    
+
     # Low stock products
     low_stock_products = db.session.query(Product, Inventory).join(
         Inventory, Product.id == Inventory.product_id
     ).filter(Inventory.quantity <= Product.min_quantity).limit(5).all()
-    
+
     # Sales data for chart
     today = datetime.now().date()
     start_date = today - timedelta(days=6)
-    
+
     sales_data = []
     for i in range(7):
         date = start_date + timedelta(days=i)
@@ -71,7 +71,7 @@ def index():
             'date': date.strftime('%Y-%m-%d'),
             'total': total_sales
         })
-    
+
     return render_template(
         'index.html',
         total_products=total_products,
@@ -87,7 +87,7 @@ def index():
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    
+
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
@@ -97,7 +97,7 @@ def login():
             return redirect(next_page or url_for('index'))
         else:
             flash('اسم المستخدم أو كلمة المرور غير صحيحة', 'danger')
-    
+
     # Pass the current datetime to the template
     return render_template('login.html', form=form, now=datetime.now())
 
@@ -106,6 +106,51 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+@app.route('/reset_password_request', methods=['GET', 'POST'])
+def reset_password_request():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    form = PasswordResetRequestForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        if user:
+            token = user.generate_reset_token()
+            # In a real application, you would send an email with the reset link
+            # For this demo, we'll just show the token in a flash message
+            reset_url = url_for('reset_password', token=token, _external=True)
+            flash(f'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني. الرابط: {reset_url}', 'info')
+            db.session.commit()
+        else:
+            # Don't reveal that the user doesn't exist
+            flash('تم إرسال تعليمات إعادة تعيين كلمة المرور إلى بريدك الإلكتروني إذا كان الحساب موجودًا.', 'info')
+
+        return redirect(url_for('login'))
+
+    return render_template('reset_password_request.html', form=form)
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    # Find the user with this token
+    user = User.query.filter_by(reset_token=token).first()
+
+    if not user or not user.verify_reset_token(token):
+        flash('رابط إعادة تعيين كلمة المرور غير صالح أو منتهي الصلاحية.', 'danger')
+        return redirect(url_for('reset_password_request'))
+
+    form = PasswordResetForm()
+    if form.validate_on_submit():
+        user.set_password(form.password.data)
+        user.clear_reset_token()
+        db.session.commit()
+        flash('تم إعادة تعيين كلمة المرور بنجاح.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', form=form, token=token)
 
 # Categories routes
 @app.route('/categories')
@@ -127,7 +172,7 @@ def add_category():
         db.session.commit()
         flash('تم إضافة التصنيف بنجاح', 'success')
         return redirect(url_for('categories'))
-    
+
     return render_template('categories/add.html', form=form)
 
 @app.route('/categories/edit/<int:id>', methods=['GET', 'POST'])
@@ -135,14 +180,14 @@ def add_category():
 def edit_category(id):
     category = Category.query.get_or_404(id)
     form = CategoryForm(obj=category)
-    
+
     if form.validate_on_submit():
         category.name = form.name.data
         category.description = form.description.data
         db.session.commit()
         flash('تم تحديث التصنيف بنجاح', 'success')
         return redirect(url_for('categories'))
-    
+
     return render_template('categories/edit.html', form=form, category=category)
 
 @app.route('/categories/delete/<int:id>', methods=['POST'])
@@ -165,10 +210,10 @@ def products():
 @login_required
 def add_product():
     form = ProductForm()
-    
+
     # Get all categories for the dropdown
     categories = Category.query.all()
-    
+
     # Check if there are any categories
     if not categories:
         # Create some default categories if none exist
@@ -182,11 +227,11 @@ def add_product():
         db.session.add_all(default_categories)
         db.session.commit()
         categories = Category.query.all()
-    
+
     # Set the choices for the category dropdown
     form.category_id.choices = [(c.id, c.name) for c in categories]
     form.category_id.choices.insert(0, (0, 'بدون تصنيف'))
-    
+
     if form.validate_on_submit():
         product = Product(
             name=form.name.data,
@@ -200,14 +245,14 @@ def add_product():
         )
         db.session.add(product)
         db.session.commit()
-        
+
         # Create inventory record
         inventory = Inventory(
             product_id=product.id,
             quantity=form.initial_quantity.data
         )
         db.session.add(inventory)
-        
+
         # Create inventory transaction
         if form.initial_quantity.data > 0:
             transaction = InventoryTransaction(
@@ -221,11 +266,11 @@ def add_product():
                 user_id=current_user.id
             )
             db.session.add(transaction)
-        
+
         db.session.commit()
         flash('تم إضافة المنتج بنجاح', 'success')
         return redirect(url_for('products'))
-    
+
     return render_template('products/add.html', form=form)
 
 @app.route('/products/edit/<int:id>', methods=['GET', 'POST'])
@@ -235,15 +280,15 @@ def edit_product(id):
     form = ProductForm(obj=product)
     form.category_id.choices = [(c.id, c.name) for c in Category.query.all()]
     form.category_id.choices.insert(0, (0, 'بدون تصنيف'))
-    
+
     if request.method == 'GET':
         form.category_id.data = product.category_id if product.category_id else 0
         if product.inventory:
             form.initial_quantity.data = product.inventory.quantity
-    
+
     if form.validate_on_submit():
         old_quantity = product.inventory.quantity if product.inventory else 0
-        
+
         product.name = form.name.data
         product.description = form.description.data
         product.barcode = form.barcode.data
@@ -252,7 +297,7 @@ def edit_product(id):
         product.sale_price = form.sale_price.data
         product.min_quantity = form.min_quantity.data
         product.category_id = form.category_id.data if form.category_id.data != 0 else None
-        
+
         # Update inventory
         if not product.inventory:
             inventory = Inventory(
@@ -274,13 +319,13 @@ def edit_product(id):
                     user_id=current_user.id
                 )
                 db.session.add(transaction)
-                
+
                 product.inventory.quantity = form.initial_quantity.data
-        
+
         db.session.commit()
         flash('تم تحديث المنتج بنجاح', 'success')
         return redirect(url_for('products'))
-    
+
     return render_template('products/edit.html', form=form, product=product)
 
 @app.route('/products/delete/<int:id>', methods=['POST'])
@@ -316,7 +361,7 @@ def add_supplier():
         db.session.commit()
         flash('تم إضافة المورد بنجاح', 'success')
         return redirect(url_for('suppliers'))
-    
+
     return render_template('suppliers/add.html', form=form)
 
 @app.route('/suppliers/edit/<int:id>', methods=['GET', 'POST'])
@@ -324,7 +369,7 @@ def add_supplier():
 def edit_supplier(id):
     supplier = Supplier.query.get_or_404(id)
     form = SupplierForm(obj=supplier)
-    
+
     if form.validate_on_submit():
         supplier.name = form.name.data
         supplier.contact_person = form.contact_person.data
@@ -335,7 +380,7 @@ def edit_supplier(id):
         db.session.commit()
         flash('تم تحديث المورد بنجاح', 'success')
         return redirect(url_for('suppliers'))
-    
+
     return render_template('suppliers/edit.html', form=form, supplier=supplier)
 
 @app.route('/suppliers/delete/<int:id>', methods=['POST'])
@@ -370,7 +415,7 @@ def add_customer():
         db.session.commit()
         flash('تم إضافة العميل بنجاح', 'success')
         return redirect(url_for('customers'))
-    
+
     return render_template('customers/add.html', form=form)
 
 @app.route('/customers/edit/<int:id>', methods=['GET', 'POST'])
@@ -378,7 +423,7 @@ def add_customer():
 def edit_customer(id):
     customer = Customer.query.get_or_404(id)
     form = CustomerForm(obj=customer)
-    
+
     if form.validate_on_submit():
         customer.name = form.name.data
         customer.phone = form.phone.data
@@ -388,7 +433,7 @@ def edit_customer(id):
         db.session.commit()
         flash('تم تحديث العميل بنجاح', 'success')
         return redirect(url_for('customers'))
-    
+
     return render_template('customers/edit.html', form=form, customer=customer)
 
 @app.route('/customers/delete/<int:id>', methods=['POST'])
@@ -413,10 +458,10 @@ def add_purchase():
     from forms import PurchaseForm
     form = PurchaseForm()
     form.supplier_id.choices = [(s.id, s.name) for s in Supplier.query.all()]
-    
+
     # Get all products for the dropdown
     products = Product.query.all()
-    
+
     if request.method == 'POST':
         # Process the form submission
         if form.validate_on_submit():
@@ -432,14 +477,14 @@ def add_purchase():
             )
             db.session.add(purchase)
             db.session.flush()  # Get the purchase ID
-            
+
             # Process purchase items
             items_count = 0
             while f'items-{items_count}-product_id' in request.form:
                 product_id = request.form.get(f'items-{items_count}-product_id')
                 quantity = int(request.form.get(f'items-{items_count}-quantity', 0))
                 price = float(request.form.get(f'items-{items_count}-price', 0))
-                
+
                 if product_id and quantity > 0 and price > 0:
                     # Add purchase item
                     item = PurchaseItem(
@@ -450,13 +495,13 @@ def add_purchase():
                         total=quantity * price
                     )
                     db.session.add(item)
-                    
+
                     # Update inventory
                     inventory = Inventory.query.filter_by(product_id=product_id).first()
                     if inventory:
                         old_quantity = inventory.quantity
                         inventory.quantity += quantity
-                        
+
                         # Create inventory transaction
                         transaction = InventoryTransaction(
                             product_id=product_id,
@@ -469,13 +514,13 @@ def add_purchase():
                             user_id=current_user.id
                         )
                         db.session.add(transaction)
-                    
+
                 items_count += 1
-            
+
             db.session.commit()
             flash('تم إضافة فاتورة الشراء بنجاح', 'success')
             return redirect(url_for('purchases'))
-    
+
     return render_template('purchases/add.html', form=form, products=products)
 
 @app.route('/purchases/view/<int:id>')
@@ -508,22 +553,22 @@ def view_sale(id):
 @login_required
 def inventory():
     status = request.args.get('status', 'all')
-    
+
     query = db.session.query(Product, Inventory).join(
         Inventory, Product.id == Inventory.product_id
     )
-    
+
     if status == 'low':
         query = query.filter(Inventory.quantity <= Product.min_quantity, Inventory.quantity > 0)
     elif status == 'out':
         query = query.filter(Inventory.quantity <= 0)
-    
+
     inventory_items = query.all()
-    
+
     total_value = sum(item.quantity * item.product.purchase_price for _, item in inventory_items)
-    
-    return render_template('inventory/index.html', 
-                          inventory=inventory_items, 
+
+    return render_template('inventory/index.html',
+                          inventory=inventory_items,
                           total_value=total_value,
                           status=status)
 
@@ -551,19 +596,19 @@ def reports():
 def sales_report():
     start_date = request.args.get('start_date', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
     end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
-    
+
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
     if isinstance(end_date, str):
         end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-    
+
     sales = Sale.query.filter(Sale.sale_date.between(start_date, end_date)).order_by(Sale.sale_date.desc()).all()
-    
+
     total_sales = sum(sale.total_amount for sale in sales)
     total_profit = sum(sale.profit for sale in sales if sale.profit)
-    
-    return render_template('reports/sales.html', 
-                          sales=sales, 
+
+    return render_template('reports/sales.html',
+                          sales=sales,
                           total_sales=total_sales,
                           total_profit=total_profit,
                           start_date=start_date,
@@ -574,18 +619,18 @@ def sales_report():
 def purchases_report():
     start_date = request.args.get('start_date', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
     end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
-    
+
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
     if isinstance(end_date, str):
         end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-    
+
     purchases = Purchase.query.filter(Purchase.purchase_date.between(start_date, end_date)).order_by(Purchase.purchase_date.desc()).all()
-    
+
     total_purchases = sum(purchase.total_amount for purchase in purchases)
-    
-    return render_template('reports/purchases.html', 
-                          purchases=purchases, 
+
+    return render_template('reports/purchases.html',
+                          purchases=purchases,
                           total_purchases=total_purchases,
                           start_date=start_date,
                           end_date=end_date)
@@ -596,11 +641,11 @@ def inventory_report():
     inventory_items = db.session.query(Product, Inventory).join(
         Inventory, Product.id == Inventory.product_id
     ).all()
-    
+
     total_value = sum(item.quantity * item.product.purchase_price for _, item in inventory_items)
-    
-    return render_template('reports/inventory.html', 
-                          inventory=inventory_items, 
+
+    return render_template('reports/inventory.html',
+                          inventory=inventory_items,
                           total_value=total_value)
 
 # Users routes
@@ -611,7 +656,7 @@ def users():
     if current_user.role != 'admin':
         flash('ليس لديك صلاحية للوصول إلى هذه الصفحة', 'danger')
         return redirect(url_for('index'))
-    
+
     users = User.query.all()
     return render_template('users/index.html', users=users)
 
@@ -622,7 +667,7 @@ def add_user():
     if current_user.role != 'admin':
         flash('ليس لديك صلاحية للوصول إلى هذه الصفحة', 'danger')
         return redirect(url_for('index'))
-    
+
     form = RegisterForm()
     if form.validate_on_submit():
         user = User(
@@ -637,7 +682,7 @@ def add_user():
         db.session.commit()
         flash('تم إضافة المستخدم بنجاح', 'success')
         return redirect(url_for('users'))
-    
+
     return render_template('users/add.html', form=form)
 
 @app.route('/users/edit/<int:id>', methods=['GET', 'POST'])
@@ -647,30 +692,30 @@ def edit_user(id):
     if current_user.role != 'admin':
         flash('ليس لديك صلاحية للوصول إلى هذه الصفحة', 'danger')
         return redirect(url_for('index'))
-    
+
     user = User.query.get_or_404(id)
     form = RegisterForm(obj=user)
-    
+
     # Don't require password on edit
     form.password.validators = []
     form.password.flags.required = False
     form.confirm_password.validators = []
     form.confirm_password.flags.required = False
-    
+
     if form.validate_on_submit():
         user.username = form.username.data
         user.email = form.email.data
         user.full_name = form.full_name.data
         user.role = form.role.data
-        
+
         # Only update password if provided
         if form.password.data:
             user.set_password(form.password.data)
-        
+
         db.session.commit()
         flash('تم تحديث المستخدم بنجاح', 'success')
         return redirect(url_for('users'))
-    
+
     return render_template('users/edit.html', form=form, user=user)
 
 @app.route('/users/toggle/<int:id>', methods=['POST'])
@@ -680,22 +725,22 @@ def toggle_user(id):
     if current_user.role != 'admin':
         flash('ليس لديك صلاحية للوصول إلى هذه الصفحة', 'danger')
         return redirect(url_for('index'))
-    
+
     user = User.query.get_or_404(id)
-    
+
     # Don't allow deactivating the last admin
     if user.role == 'admin' and user.is_active and User.query.filter_by(role='admin', is_active=True).count() <= 1:
         flash('لا يمكن إلغاء تنشيط المسؤول الوحيد', 'danger')
         return redirect(url_for('users'))
-    
+
     # Don't allow deactivating yourself
     if user.id == current_user.id:
         flash('لا يمكنك إلغاء تنشيط حسابك الحالي', 'danger')
         return redirect(url_for('users'))
-    
+
     user.is_active = not user.is_active
     db.session.commit()
-    
+
     status = 'تنشيط' if user.is_active else 'إلغاء تنشيط'
     flash(f'تم {status} المستخدم بنجاح', 'success')
     return redirect(url_for('users'))
@@ -708,40 +753,40 @@ def settings():
     if current_user.role != 'admin':
         flash('ليس لديك صلاحية للوصول إلى هذه الصفحة', 'danger')
         return redirect(url_for('index'))
-    
+
     # Get or create settings
     store_name = Setting.query.filter_by(key='store_name').first()
     if not store_name:
         store_name = Setting(key='store_name', value='نظام إدارة المخزن')
         db.session.add(store_name)
-    
+
     store_address = Setting.query.filter_by(key='store_address').first()
     if not store_address:
         store_address = Setting(key='store_address', value='')
         db.session.add(store_address)
-    
+
     store_phone = Setting.query.filter_by(key='store_phone').first()
     if not store_phone:
         store_phone = Setting(key='store_phone', value='')
         db.session.add(store_phone)
-    
+
     store_email = Setting.query.filter_by(key='store_email').first()
     if not store_email:
         store_email = Setting(key='store_email', value='')
         db.session.add(store_email)
-    
+
     tax_rate = Setting.query.filter_by(key='tax_rate').first()
     if not tax_rate:
         tax_rate = Setting(key='tax_rate', value='0')
         db.session.add(tax_rate)
-    
+
     currency = Setting.query.filter_by(key='currency').first()
     if not currency:
         currency = Setting(key='currency', value='ر.س')
         db.session.add(currency)
-    
+
     db.session.commit()
-    
+
     if request.method == 'POST':
         store_name.value = request.form.get('store_name', '')
         store_address.value = request.form.get('store_address', '')
@@ -749,12 +794,12 @@ def settings():
         store_email.value = request.form.get('store_email', '')
         tax_rate.value = request.form.get('tax_rate', '0')
         currency.value = request.form.get('currency', 'ر.س')
-        
+
         db.session.commit()
         flash('تم تحديث الإعدادات بنجاح', 'success')
         return redirect(url_for('settings'))
-    
-    return render_template('settings/index.html', 
+
+    return render_template('settings/index.html',
                           store_name=store_name.value,
                           store_address=store_address.value,
                           store_phone=store_phone.value,
@@ -767,34 +812,34 @@ def settings():
 @login_required
 def profile():
     form = RegisterForm(obj=current_user)
-    
+
     # Don't require password on edit
     form.password.validators = []
     form.password.flags.required = False
     form.confirm_password.validators = []
     form.confirm_password.flags.required = False
-    
+
     # Remove role field for non-admin users
     if current_user.role != 'admin':
         del form.role
-    
+
     if form.validate_on_submit():
         current_user.username = form.username.data
         current_user.email = form.email.data
         current_user.full_name = form.full_name.data
-        
+
         # Only admin can change role
         if current_user.role == 'admin' and hasattr(form, 'role'):
             current_user.role = form.role.data
-        
+
         # Only update password if provided
         if form.password.data:
             current_user.set_password(form.password.data)
-        
+
         db.session.commit()
         flash('تم تحديث الملف الشخصي بنجاح', 'success')
         return redirect(url_for('profile'))
-    
+
     return render_template('profile.html', form=form)
 
 # Add more routes for purchases, sales, inventory, etc.
