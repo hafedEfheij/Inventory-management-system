@@ -84,6 +84,18 @@ class Product(db.Model):
     purchase_items = db.relationship('PurchaseItem', backref='product', lazy=True)
     sale_items = db.relationship('SaleItem', backref='product', lazy=True)
 
+    def get_barcode_image_path(self):
+        """Get the path to the barcode image for this product"""
+        if not self.barcode:
+            return None
+        return f'static/barcodes/{self.id}_{self.barcode}'
+
+    def get_barcode_url(self):
+        """Get the URL to the barcode image for this product"""
+        if not self.barcode:
+            return None
+        return f'/static/barcodes/{self.id}_{self.barcode}.png'
+
     def __repr__(self):
         return f'<Product {self.name}>'
 
