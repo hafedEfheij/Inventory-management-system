@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
@@ -6,6 +6,7 @@ import os
 from models import db, User, Category, Product, Supplier, Customer, Purchase, PurchaseItem, Sale, SaleItem, Inventory, InventoryTransaction, Setting
 from forms import LoginForm, RegisterForm, CategoryForm, ProductForm, SupplierForm, CustomerForm, PasswordResetRequestForm, PasswordResetForm
 from utils import generate_barcode_file, generate_barcode_base64, generate_random_barcode
+from export import generate_product_report, generate_inventory_report, generate_sales_report, generate_purchases_report
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
@@ -204,6 +205,62 @@ def delete_category(id):
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     return send_from_directory('static', filename)
+
+# Reports routes
+@app.route('/reports')
+@login_required
+def reports():
+    categories = Category.query.all()
+    return render_template('reports/index.html', categories=categories)
+
+# Export routes
+@app.route('/export/products/<format>')
+@login_required
+def export_products(format):
+    if format not in ['csv', 'pdf']:
+        flash('Invalid export format', 'danger')
+        return redirect(url_for('products'))
+
+    products = Product.query.all()
+    filepath = generate_product_report(products, format)
+
+    return send_file(filepath, as_attachment=True)
+
+@app.route('/export/inventory/<format>')
+@login_required
+def export_inventory(format):
+    if format not in ['csv', 'pdf']:
+        flash('Invalid export format', 'danger')
+        return redirect(url_for('inventory'))
+
+    inventory_items = Inventory.query.all()
+    filepath = generate_inventory_report(inventory_items, format)
+
+    return send_file(filepath, as_attachment=True)
+
+@app.route('/export/sales/<format>')
+@login_required
+def export_sales(format):
+    if format not in ['csv', 'pdf']:
+        flash('Invalid export format', 'danger')
+        return redirect(url_for('sales'))
+
+    sales = Sale.query.all()
+    filepath = generate_sales_report(sales, format)
+
+    return send_file(filepath, as_attachment=True)
+
+@app.route('/export/purchases/<format>')
+@login_required
+def export_purchases(format):
+    if format not in ['csv', 'pdf']:
+        flash('Invalid export format', 'danger')
+        return redirect(url_for('purchases'))
+
+    purchases = Purchase.query.all()
+    filepath = generate_purchases_report(purchases, format)
+
+    return send_file(filepath, as_attachment=True)
 
 # Products routes
 @app.route('/products')
