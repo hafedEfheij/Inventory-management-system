@@ -1,7 +1,34 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, TextAreaField, FloatField, IntegerField, SelectField, DateField
-from wtforms.validators import DataRequired, Email, EqualTo, Optional, Length, NumberRange
+from wtforms.validators import DataRequired, Email, EqualTo, Optional, Length, NumberRange, ValidationError
 from datetime import datetime
+import re
+
+def password_check(form, field):
+    """
+    Verify the strength of a password
+    Must contain at least:
+    - 8 characters
+    - 1 digit
+    - 1 uppercase letter
+    - 1 lowercase letter
+    - 1 special character
+    """
+    password = field.data
+    if len(password) < 8:
+        raise ValidationError("كلمة المرور يجب أن تحتوي على 8 أحرف على الأقل")
+
+    if not re.search(r"\d", password):
+        raise ValidationError("كلمة المرور يجب أن تحتوي على رقم واحد على الأقل")
+
+    if not re.search(r"[A-Z]", password):
+        raise ValidationError("كلمة المرور يجب أن تحتوي على حرف كبير واحد على الأقل")
+
+    if not re.search(r"[a-z]", password):
+        raise ValidationError("كلمة المرور يجب أن تحتوي على حرف صغير واحد على الأقل")
+
+    if not re.search(r"[ !#$%&'()*+,-./[\\\]^_`{|}~"+r'"]', password):
+        raise ValidationError("كلمة المرور يجب أن تحتوي على حرف خاص واحد على الأقل")
 
 class LoginForm(FlaskForm):
     username = StringField('اسم المستخدم', validators=[DataRequired()])
@@ -12,7 +39,7 @@ class RegisterForm(FlaskForm):
     username = StringField('اسم المستخدم', validators=[DataRequired(), Length(min=3, max=64)])
     email = StringField('البريد الإلكتروني', validators=[DataRequired(), Email()])
     full_name = StringField('الاسم الكامل', validators=[DataRequired()])
-    password = PasswordField('كلمة المرور', validators=[DataRequired(), Length(min=6)])
+    password = PasswordField('كلمة المرور', validators=[DataRequired(), Length(min=8), password_check])
     confirm_password = PasswordField('تأكيد كلمة المرور', validators=[DataRequired(), EqualTo('password')])
 
 class CategoryForm(FlaskForm):
@@ -94,7 +121,7 @@ class UserForm(FlaskForm):
         ('user', 'مستخدم')
     ], validators=[DataRequired()])
     is_active = BooleanField('نشط')
-    password = PasswordField('كلمة المرور', validators=[Optional(), Length(min=6)])
+    password = PasswordField('كلمة المرور', validators=[Optional(), Length(min=8), password_check])
     confirm_password = PasswordField('تأكيد كلمة المرور', validators=[EqualTo('password')])
 
 class SettingsForm(FlaskForm):
