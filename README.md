@@ -1,6 +1,6 @@
 # Inventory Management System - نظام إدارة المخزن
 
-This is a comprehensive inventory management system built with Flask. It provides a complete solution for managing products, suppliers, customers, purchases, sales, and inventory tracking.
+
 
 ![Inventory Dashboard](https://via.placeholder.com/800x400?text=Inventory+Dashboard)
 
