@@ -2,8 +2,6 @@
 
 This is a comprehensive inventory management system built with Flask. It provides a complete solution for managing products, suppliers, customers, purchases, sales, and inventory tracking.
 
-![Inventory Dashboard](https://via.placeholder.com/800x400?text
-
 ## Features
 
 - **Dashboard**: Get an overview of your business with key metrics and charts
